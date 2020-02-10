@@ -11,103 +11,80 @@
    Noah Kernis
 */
 
-// display
-//#include "SPI.h"
-//#include "TFT_22_ILI9225.h"
-//
-//#define USE_ARDUINO_INTERRUPTS true
-//#define TFT_CLK 13  // SCK
-//#define TFT_SDI 11  // MOSI
-//#define TFT_CS  10  // SS
-//#define TFT_RS  9
-//#define TFT_RST 8
-//#define TFT_LED 0   // 0 if wired to +5V directly
-//
-//TFT_22_ILI9225 tft = TFT_22_ILI9225(TFT_RST, TFT_RS, TFT_CS, TFT_SDI, TFT_CLK, TFT_LED);
+// TODO: 
+// - Need to access accelorometer to see if box is inverted
+// - Logic for inverted code
 
-// Time
+// https://github.com/mathertel/OneButton/blob/master/examples/SimpleOneButton/SimpleOneButton.ino
+
+// time
 #include <RTCZero.h>
 
 RTCZero rtc;
 int lastSecond = 0; // rtc.getSeconds()' previous value
 String  timeStamp;
 
-// Nano 33 IoT Interuots: 2, 3, 9, 10, 11, 13, 15, A5, A7
+// buttons
+// interrupt pins: 2, 3, 9, 10, 11, 13, 15, A5, A7
 const int setBtn = 9;
 const int upBtn = 3;
 const int downBtn = 2;
 
-// config state
+#include "OneButton.h"
+OneButton button(setBtn, true);
+
+// config
 boolean configMode = false;
 
+// 0: hours, 1: minutes, 2: diffHours, 3: diffMinutes
+string currentConfig = 0;
+
 // relative time diff
-int diff = 12; // default is 12 hours ahead
+// default is 12 hours 0 minutes ahead
+int diffHours = 12;
+int diffMinutes = 0;
+
+// NOTE: -----> Setup <-----
 
 void setup() {
   Serial.begin(9600);
 
-  // init display
-  tft.begin();
-  tft.setFont(Terminal6x8);
-  
   // init RTC
   rtc.begin();
   rtc.setTime(0, 0, 0);
 
+  // set button
   pinMode(setBtn, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(setBtn), handleSet, FALLING);
+  attachInterrupt(digitalPinToInterrupt(setBtn), std::bind(handleAction, "SET"), FALLING);
+  button.attachDoubleClick(std::bind(handleAction, "DOUBLECLICK"))
+
+  // up button
   pinMode(upBtn, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(upBtn), handleUp, FALLING);
+  attachInterrupt(digitalPinToInterrupt(upBtn), std::bind(handleAction, "UP"), FALLING);
+
+  // down button
   pinMode(downBtn, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(downBtn), handleDown, FALLING);
+  attachInterrupt(digitalPinToInterrupt(downBtn), std::bind(handleAction, "DOWN"), FALLING);
 }
 
-void loop() {
-  // check to see if in config mode
-  if (configMode == 1) {
-    configureClock();
-  }
+// NOTE: -----> Loop <-----
 
+void loop() {
+  // keep watching the push button
+  button.tick();
+  
   // check time has elapsed
   if (rtc.getSeconds() != lastSecond) {
-    displayTime(createTimeStamp());
+    timeAction("TIME");
 
     lastSecond = rtc.getSeconds();
   }
 }
 
-//  NOTE: -----> Clock Config <-----
+// NOTE: -----> Button Handler <-----
 
-void configureClock() {
-  configHours();
-  configMinutes();
-  configDiff();
-}
-
-void configHours() {
-  int hours = rtc.getHours();
-}
-
-void configMinutes() {
-  int hours = rtc.getMinutes();
-}
-
-void configDiff() {
-
-}
-
-// NOTE: -----> Button Handlers <-----
-
-void handleSet() {
-  Serial.println("SET");
-}
-
-void handleUp() {
-  Serial.println("UP");
-}
-
-void handleDown() {
-  Serial.println("DOWN");
+void handleAction(string action){
+  if (configMode == true) timeAction(action);
 }
 
 // NOTE: -----> Timestamp <-----
@@ -120,6 +97,83 @@ String createTimeStamp() {
 
 void displayTime(String time) {
   Serial.println(time);
+}
 
-  tft.drawText(10, 10, time);
+//  NOTE: -----> Clock Config <-----
+
+void timeAction(string action) {
+  Serial.println(action);
+
+  switch (action)
+    case "TIME":
+      break;
+    case "DOUBLECLICK":
+      configMode = +configMode;
+      break;
+    case "SET":
+      handleSet();
+      break;
+    case "UP":
+      handleUp();
+      break;
+    case "DOWN":
+      handleDown();
+      break;
+  }
+  if (currentConfig == 0 || currentConfig == 1) {
+    // TODO:
+    // - Another check for box is inverted to determine if screen should be changed at all 
+    displayTime(createTimeStamp());
+  } else {
+    // TODO:
+    // - This should display the time diff for setting 
+    // displayTime(createTimeStamp());
+  }
+}
+
+void handleSet() {
+  if (currentConfig == 3) {
+    currentConfig = 0;
+  } else {
+    currentConfig++
+  }
+}
+
+void handleUp() {
+  int time = whatToChange();
+
+  switch (currentConfig)
+    case 0:
+      rtc.setHours(time++);
+    case 1:
+      rtc.setMinutes(time++);
+    case 2:
+    // ...
+    case 3:
+    // ...
+}
+
+void handleDown() {
+  int time = whatToChange();
+
+  switch (currentConfig)
+    case 0:
+      rtc.setHours(time--);
+    case 1:
+      rtc.setMinutes(time--);
+    case 2:
+      // TODO: 
+      // - need to check state of diff and then make decision (assign new value to diff var)
+      // if (diffHours == 0) diffHours = 23;
+    case 3:
+    // ...
+  }
+}
+
+int whatToChange() {
+  if (currentConfig == 0 || currentConfig == 2) {
+    return rtc.getHours();
+  } else {
+    return rtc.getMinutes();
+  }
 }
