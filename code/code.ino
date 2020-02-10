@@ -15,8 +15,10 @@
 // - Need to access accelorometer to see if box is inverted
 // - Logic for inverted code
 
-// https://github.com/mathertel/OneButton/blob/master/examples/SimpleOneButton/SimpleOneButton.ino
+// - BIND DOESNT WORK
 
+// https://github.com/mathertel/OneButton/blob/master/examples/SimpleOneButton/SimpleOneButton.ino
+#include <cstdio>
 // time
 #include <RTCZero.h>
 
@@ -37,7 +39,7 @@ OneButton button(setBtn, true);
 boolean configMode = false;
 
 // 0: hours, 1: minutes, 2: diffHours, 3: diffMinutes
-string currentConfig = 0;
+int currentConfig = 0;
 
 // relative time diff
 // default is 12 hours 0 minutes ahead
@@ -55,16 +57,16 @@ void setup() {
 
   // set button
   pinMode(setBtn, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(setBtn), std::bind(handleAction, "SET"), FALLING);
-  button.attachDoubleClick(std::bind(handleAction, "DOUBLECLICK"))
+  attachInterrupt(digitalPinToInterrupt(setBtn), setPressed, FALLING);
+  button.attachDoubleClick(setDoublePressed);
 
   // up button
   pinMode(upBtn, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(upBtn), std::bind(handleAction, "UP"), FALLING);
+  attachInterrupt(digitalPinToInterrupt(upBtn), upPressed, FALLING);
 
   // down button
   pinMode(downBtn, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(downBtn), std::bind(handleAction, "DOWN"), FALLING);
+  attachInterrupt(digitalPinToInterrupt(downBtn), downPressed, FALLING);
 }
 
 // NOTE: -----> Loop <-----
@@ -75,16 +77,28 @@ void loop() {
   
   // check time has elapsed
   if (rtc.getSeconds() != lastSecond) {
-    timeAction("TIME");
+    timeAction(0);
 
     lastSecond = rtc.getSeconds();
   }
 }
 
-// NOTE: -----> Button Handler <-----
+// NOTE: -----> Action Handler <-----
 
-void handleAction(string action){
-  if (configMode == true) timeAction(action);
+void setPressed(){
+  if (configMode == true) timeAction(2);
+}
+
+void setDoublePressed(){
+  if (configMode == true) timeAction(1);
+}
+
+void upPressed(){
+  if (configMode == true) timeAction(3);
+}
+
+void downPressed(){
+  if (configMode == true) timeAction(4);
 }
 
 // NOTE: -----> Timestamp <-----
@@ -101,25 +115,26 @@ void displayTime(String time) {
 
 //  NOTE: -----> Clock Config <-----
 
-void timeAction(string action) {
+void timeAction(int action) {
   Serial.println(action);
 
-  switch (action)
-    case "TIME":
+  switch (action) {
+    case 0: // TIME
       break;
-    case "DOUBLECLICK":
+    case 1: // DOUBLECLICK
       configMode = +configMode;
       break;
-    case "SET":
+    case 2: // SET
       handleSet();
       break;
-    case "UP":
+    case 3: // UP
       handleUp();
       break;
-    case "DOWN":
+    case 4: // DOWN
       handleDown();
       break;
   }
+  
   if (currentConfig == 0 || currentConfig == 1) {
     // TODO:
     // - Another check for box is inverted to determine if screen should be changed at all 
@@ -128,6 +143,7 @@ void timeAction(string action) {
     // TODO:
     // - This should display the time diff for setting 
     // displayTime(createTimeStamp());
+    displayTime(createTimeStamp());
   }
 }
 
@@ -135,38 +151,7 @@ void handleSet() {
   if (currentConfig == 3) {
     currentConfig = 0;
   } else {
-    currentConfig++
-  }
-}
-
-void handleUp() {
-  int time = whatToChange();
-
-  switch (currentConfig)
-    case 0:
-      rtc.setHours(time++);
-    case 1:
-      rtc.setMinutes(time++);
-    case 2:
-    // ...
-    case 3:
-    // ...
-}
-
-void handleDown() {
-  int time = whatToChange();
-
-  switch (currentConfig)
-    case 0:
-      rtc.setHours(time--);
-    case 1:
-      rtc.setMinutes(time--);
-    case 2:
-      // TODO: 
-      // - need to check state of diff and then make decision (assign new value to diff var)
-      // if (diffHours == 0) diffHours = 23;
-    case 3:
-    // ...
+    currentConfig++;
   }
 }
 
@@ -175,5 +160,42 @@ int whatToChange() {
     return rtc.getHours();
   } else {
     return rtc.getMinutes();
+  }
+}
+
+void handleUp() {
+  int time = whatToChange();
+
+  switch (currentConfig) {
+    case 0:
+      rtc.setHours(time++);
+      break;
+    case 1:
+      rtc.setMinutes(time++);
+      break;
+    case 2:
+      break;
+    case 3:
+      break;
+  }
+}
+
+void handleDown() {
+  int time = whatToChange();
+
+  switch (currentConfig) {
+    case 0:
+      rtc.setHours(time--);
+      break;
+    case 1:
+      rtc.setMinutes(time--);
+      break;
+    case 2:
+      // TODO: 
+      // - need to check state of diff and then make decision (assign new value to diff var)
+      // if (diffHours == 0) diffHours = 23;
+      break;
+    case 3:
+      break;
   }
 }
