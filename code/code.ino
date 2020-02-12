@@ -231,7 +231,7 @@ String currentlySetting() {
     case 1:
       return "MINUTES";
     case 2:
-      return "HOURS DIFFERENCE";
+      return "DIFFERENCE";
   }
 }
 
