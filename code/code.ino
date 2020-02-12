@@ -11,20 +11,37 @@
    Noah Kernis
 */
 
-// TODO: 
+// TODO:
 // - Need to access accelorometer to see if box is inverted
 // - Logic for inverted code
 
-// - BIND DOESNT WORK
+// NOTE: REFS:
+// - https://github.com/mathertel/OneButton/blob/master/examples/SimpleOneButton/SimpleOneButton.ino
+// - https://startingelectronics.org/tutorials/arduino/modules/OLED-128x64-I2C-display/
+// - https://learn.adafruit.com/adafruit-gfx-graphics-library/graphics-primitives
+// - https://github.com/arduino-libraries/Arduino_LSM6DS3
 
-// https://github.com/mathertel/OneButton/blob/master/examples/SimpleOneButton/SimpleOneButton.ino
-#include <cstdio>
+// display
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+
+// Declaration for an SSD1306 display connected to I2C (SDA A4, SCL SDL pins)
+#define OLED_RESET 4 // Reset pin # (or -1 if sharing Arduino reset pin)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// IMU
+#include <Arduino_LSM6DS3.h>
+
 // time
 #include <RTCZero.h>
 
 RTCZero rtc;
 int lastSecond = 0; // rtc.getSeconds()' previous value
-String  timeStamp;
 
 // buttons
 // interrupt pins: 2, 3, 9, 10, 11, 13, 15, A5, A7
@@ -37,9 +54,12 @@ OneButton button(setBtn, true);
 
 // config
 boolean configMode = false;
+boolean upsideDown = false;
 
 // 0: hours, 1: minutes, 2: diffHours, 3: diffMinutes
 int currentConfig = 0;
+
+int debounce = 6;
 
 // relative time diff
 // default is 12 hours 0 minutes ahead
@@ -50,6 +70,20 @@ int diffMinutes = 0;
 
 void setup() {
   Serial.begin(9600);
+
+  // init display
+  // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
+    Serial.println(F("SSD1306 allocation failed"));
+    for (;;); // Don't proceed, loop forever
+  }
+
+  // init IMU
+  if (!IMU.begin()) {
+    Serial.println("Failed to initialize IMU!");
+
+    while (1);
+  }
 
   // init RTC
   rtc.begin();
@@ -74,74 +108,107 @@ void setup() {
 void loop() {
   // keep watching the push button
   button.tick();
-  
+
   // check time has elapsed
   if (rtc.getSeconds() != lastSecond) {
     timeAction(0);
 
     lastSecond = rtc.getSeconds();
   }
+
+  float x, y, z;
+
+  if (IMU.gyroscopeAvailable()) {
+//    IMU.readGyroscope(x, y, z);
+
+//    Serial.print(x);
+//    Serial.print('\t');
+//    Serial.print(y);
+//    Serial.print('\t');
+//    Serial.println(z);
+  }
 }
 
 // NOTE: -----> Action Handler <-----
 
-void setPressed(){
+void setDoublePressed() {
+  delay(debounce);
+  timeAction(1);
+}
+
+void setPressed() {
+  delay(debounce);
   if (configMode == true) timeAction(2);
 }
 
-void setDoublePressed(){
-  if (configMode == true) timeAction(1);
-}
-
-void upPressed(){
+void upPressed() {
+  delay(debounce);
   if (configMode == true) timeAction(3);
 }
 
-void downPressed(){
+void downPressed() {
+  delay(debounce);
   if (configMode == true) timeAction(4);
 }
 
 // NOTE: -----> Timestamp <-----
 
 String createTimeStamp() {
-  timeStamp = String(rtc.getHours()) + ':' + String(rtc.getMinutes()) + ':' + String(rtc.getSeconds());
-
-  return timeStamp;
+  if (upsideDown) {
+    // TODO: Need to do time math - can't just add together
+    return String(rtc.getHours() + diffHours) + ':' + String(rtc.getMinutes() + diffHours);
+  } else {
+    return String(rtc.getHours()) + ':' + String(rtc.getMinutes());
+  }
 }
 
 void displayTime(String time) {
-  Serial.println(time);
+//  Serial.println(time);
+  display.clearDisplay();
+
+  display.setCursor(40, 20);
+  display.setTextColor(WHITE);
+  display.setTextSize(2);
+  display.print(time);
+  
+  display.display();
 }
 
 //  NOTE: -----> Clock Config <-----
 
 void timeAction(int action) {
-  Serial.println(action);
-
   switch (action) {
     case 0: // TIME
       break;
-    case 1: // DOUBLECLICK
-      configMode = +configMode;
+    case 1:
+      Serial.println("DOUBLECLICK");
+      configMode = !configMode;
+
       break;
-    case 2: // SET
+    case 2:
+      Serial.println("SET");
       handleSet();
+
       break;
-    case 3: // UP
+    case 3:
+      Serial.println("UP");
       handleUp();
+
       break;
-    case 4: // DOWN
+    case 4:
+      Serial.println("DOWN");
       handleDown();
+
       break;
   }
-  
+
   if (currentConfig == 0 || currentConfig == 1) {
     // TODO:
-    // - Another check for box is inverted to determine if screen should be changed at all 
+    // - Another check for box is inverted to determine if screen should be changed at all
     displayTime(createTimeStamp());
   } else {
     // TODO:
-    // - This should display the time diff for setting 
+    // - This should display the time diff for setting
     // displayTime(createTimeStamp());
     displayTime(createTimeStamp());
   }
@@ -191,7 +258,7 @@ void handleDown() {
       rtc.setMinutes(time--);
       break;
     case 2:
-      // TODO: 
+      // TODO:
       // - need to check state of diff and then make decision (assign new value to diff var)
       // if (diffHours == 0) diffHours = 23;
       break;
