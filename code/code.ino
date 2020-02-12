@@ -8,18 +8,16 @@
    Time is set by using momentary push buttons.
 
    created 02/02/2020
+   edited 02/12/2020
    Noah Kernis
 */
-
-// TODO:
-// - Need to access accelorometer to see if box is inverted
-// - Logic for inverted code
 
 // NOTE: REFS:
 // - https://github.com/mathertel/OneButton/blob/master/examples/SimpleOneButton/SimpleOneButton.ino
 // - https://startingelectronics.org/tutorials/arduino/modules/OLED-128x64-I2C-display/
 // - https://learn.adafruit.com/adafruit-gfx-graphics-library/graphics-primitives
 // - https://github.com/arduino-libraries/Arduino_LSM6DS3
+// - https://github.com/PaulStoffregen/Time
 
 // display
 #include <SPI.h>
@@ -37,6 +35,8 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 // IMU
 #include <Arduino_LSM6DS3.h>
 
+float x, y, z;
+
 // time
 #include <RTCZero.h>
 
@@ -45,12 +45,14 @@ int lastSecond = 0; // rtc.getSeconds()' previous value
 
 // buttons
 // interrupt pins: 2, 3, 9, 10, 11, 13, 15, A5, A7
-const int setBtn = 9;
-const int upBtn = 3;
-const int downBtn = 2;
+const int setBtnPin = 9;
+const int upBtnPin = 3;
+const int downBtnPin = 2;
 
 #include "OneButton.h"
-OneButton button(setBtn, true);
+OneButton setBtn(setBtnPin, true);
+OneButton upBtn(upBtnPin, true);
+OneButton downBtn(downBtnPin, true);
 
 // config
 boolean configMode = false;
@@ -59,12 +61,9 @@ boolean upsideDown = false;
 // 0: hours, 1: minutes, 2: diffHours, 3: diffMinutes
 int currentConfig = 0;
 
-int debounce = 6;
-
 // relative time diff
 // default is 12 hours 0 minutes ahead
 int diffHours = 12;
-int diffMinutes = 0;
 
 // NOTE: -----> Setup <-----
 
@@ -90,25 +89,28 @@ void setup() {
   rtc.setTime(0, 0, 0);
 
   // set button
-  pinMode(setBtn, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(setBtn), setPressed, FALLING);
-  button.attachDoubleClick(setDoublePressed);
+  pinMode(setBtnPin, INPUT_PULLUP);
+  setBtn.attachClick(setPressed);
+  setBtn.attachDoubleClick(setDoublePressed);
+  setBtn.setDebounceTicks(80);
 
   // up button
-  pinMode(upBtn, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(upBtn), upPressed, FALLING);
+  pinMode(upBtnPin, INPUT_PULLUP);
+  upBtn.attachClick(upPressed);
 
   // down button
-  pinMode(downBtn, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(downBtn), downPressed, FALLING);
+  pinMode(downBtnPin, INPUT_PULLUP);
+  downBtn.attachClick(downPressed);
 }
 
 // NOTE: -----> Loop <-----
 
 void loop() {
   // keep watching the push button
-  button.tick();
-
+  setBtn.tick();
+  upBtn.tick();
+  downBtn.tick();
+  
   // check time has elapsed
   if (rtc.getSeconds() != lastSecond) {
     timeAction(0);
@@ -116,153 +118,182 @@ void loop() {
     lastSecond = rtc.getSeconds();
   }
 
-  float x, y, z;
+  if (IMU.accelerationAvailable()) {
+    IMU.readAcceleration(x, y, z);
+    
+    isUpsideDown(x);  
+  }
+}
 
-  if (IMU.gyroscopeAvailable()) {
-//    IMU.readGyroscope(x, y, z);
+// NOTE: -----> Upside Down <-----
 
-//    Serial.print(x);
-//    Serial.print('\t');
-//    Serial.print(y);
-//    Serial.print('\t');
-//    Serial.println(z);
+void isUpsideDown(int xPostion) {
+  if (upsideDown) {
+    if (xPostion > 0) upsideDown = !upsideDown;
+  } else {
+    if (xPostion < 0) upsideDown = !upsideDown;
   }
 }
 
 // NOTE: -----> Action Handler <-----
 
 void setDoublePressed() {
-  delay(debounce);
-  timeAction(1);
+  if (!upsideDown) timeAction(1);
 }
 
 void setPressed() {
-  delay(debounce);
-  if (configMode == true) timeAction(2);
+  if (configMode == true && !upsideDown) timeAction(2);
 }
 
 void upPressed() {
-  delay(debounce);
-  if (configMode == true) timeAction(3);
+  if (configMode == true && !upsideDown) timeAction(3);
 }
 
 void downPressed() {
-  delay(debounce);
-  if (configMode == true) timeAction(4);
+  if (configMode == true && !upsideDown) timeAction(4);
 }
 
 // NOTE: -----> Timestamp <-----
 
 String createTimeStamp() {
+  String currentHours = needsAZero(rtc.getHours());
+  String currentMinutes = needsAZero(rtc.getMinutes());
+
   if (upsideDown) {
-    // TODO: Need to do time math - can't just add together
-    return String(rtc.getHours() + diffHours) + ':' + String(rtc.getMinutes() + diffHours);
-  } else {
-    return String(rtc.getHours()) + ':' + String(rtc.getMinutes());
+     return String(rtc.getHours() + diffHours) + ':' + currentMinutes;
   }
+    return currentHours + ':' + currentMinutes;
+}
+
+String needsAZero(int timeUnit) {
+  if (timeUnit < 10) {
+    return "0" + String(timeUnit);
+  }
+
+  return String(timeUnit);
 }
 
 void displayTime(String time) {
-//  Serial.println(time);
   display.clearDisplay();
 
-  display.setCursor(40, 20);
-  display.setTextColor(WHITE);
-  display.setTextSize(2);
-  display.print(time);
+  if (upsideDown && !configMode) {
+    display.setRotation(2);
+  } else {
+    display.setRotation(0);
+  }
+
+  if (configMode) {
+    display.setCursor(0, 0);
+    display.setTextColor(WHITE);
+    display.setTextSize(1);  
+    display.print(currentlySetting());
+  }
+
+  if (upsideDown && !configMode) {
+    display.setRotation(2);
+    display.setCursor(4, 20);
+  } else if (currentConfig == 2 && configMode) {
+    display.setRotation(0);
+    display.setCursor(40, 15);
+  } else {
+    display.setRotation(0);
+    display.setCursor(4, 15);
+  }
   
+  display.setTextColor(WHITE);
+  display.setTextSize(4);
+  display.print(time);
   display.display();
 }
 
 //  NOTE: -----> Clock Config <-----
+
+String currentlySetting() {
+  switch (currentConfig) {
+    case 0:
+      return "HOURS";
+    case 1:
+      return "MINUTES";
+    case 2:
+      return "HOURS AHEAD";
+  }
+}
 
 void timeAction(int action) {
   switch (action) {
     case 0: // TIME
       break;
     case 1:
-      Serial.println("DOUBLECLICK");
+      if (configMode) currentConfig = 0;
       configMode = !configMode;
-
       break;
     case 2:
-      Serial.println("SET");
       handleSet();
-
       break;
     case 3:
-      Serial.println("UP");
       handleUp();
-
       break;
     case 4:
-      Serial.println("DOWN");
       handleDown();
-
       break;
   }
 
   if (currentConfig == 0 || currentConfig == 1) {
-    // TODO:
-    // - Another check for box is inverted to determine if screen should be changed at all
     displayTime(createTimeStamp());
   } else {
-    // TODO:
-    // - This should display the time diff for setting
-    // displayTime(createTimeStamp());
-    displayTime(createTimeStamp());
+    displayTime(String(needsAZero(diffHours)));
   }
 }
 
 void handleSet() {
-  if (currentConfig == 3) {
+  if (currentConfig == 2) {
     currentConfig = 0;
+    configMode = false;
   } else {
     currentConfig++;
   }
 }
 
-int whatToChange() {
-  if (currentConfig == 0 || currentConfig == 2) {
-    return rtc.getHours();
-  } else {
-    return rtc.getMinutes();
-  }
-}
-
 void handleUp() {
-  int time = whatToChange();
-
+  int hrs = rtc.getHours();
+  int mins = rtc.getMinutes();
+  
   switch (currentConfig) {
     case 0:
-      rtc.setHours(time++);
+      if (hrs == 23) hrs = 0;
+      if (hrs < 23) hrs++;
+      rtc.setHours(hrs);
       break;
     case 1:
-      rtc.setMinutes(time++);
+      if (mins == 59) mins = 0;
+      if (mins < 59) mins++;
+      rtc.setMinutes(mins);
       break;
     case 2:
-      break;
-    case 3:
+      if (diffHours == 23) diffHours = 0;
+      if (diffHours < 23) diffHours++;
       break;
   }
 }
 
 void handleDown() {
-  int time = whatToChange();
-
+  int hrs = rtc.getHours();
+  int mins = rtc.getMinutes();
+   
   switch (currentConfig) {
     case 0:
-      rtc.setHours(time--);
+      if (hrs == 0) hrs = 23;
+      if (hrs > 0) hrs--;
+      rtc.setHours(hrs);
       break;
     case 1:
-      rtc.setMinutes(time--);
+      if (mins == 0) mins = 59;
+      if (mins > 0) mins--;
+      rtc.setMinutes(mins);
       break;
     case 2:
-      // TODO:
-      // - need to check state of diff and then make decision (assign new value to diff var)
-      // if (diffHours == 0) diffHours = 23;
-      break;
-    case 3:
+      if (diffHours == 0) diffHours = 23;
+      if (diffHours > 0) diffHours--;
       break;
   }
 }
