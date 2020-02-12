@@ -110,7 +110,7 @@ void loop() {
   setBtn.tick();
   upBtn.tick();
   downBtn.tick();
-  
+
   // check time has elapsed
   if (rtc.getSeconds() != lastSecond) {
     timeAction(0);
@@ -120,8 +120,8 @@ void loop() {
 
   if (IMU.accelerationAvailable()) {
     IMU.readAcceleration(x, y, z);
-    
-    isUpsideDown(x);  
+
+    isUpsideDown(x);
   }
 }
 
@@ -156,21 +156,37 @@ void downPressed() {
 // NOTE: -----> Timestamp <-----
 
 String createTimeStamp() {
-  String currentHours = needsAZero(rtc.getHours());
+  int currentHours = rtc.getHours();
   String currentMinutes = needsAZero(rtc.getMinutes());
 
   if (upsideDown) {
-     return String(rtc.getHours() + diffHours) + ':' + currentMinutes;
+    return needsAZero(handleDiffHours(currentHours)) + ':' + currentMinutes;
   }
-    return currentHours + ':' + currentMinutes;
+  return needsAZero(currentHours) + ':' + currentMinutes;
 }
 
 String needsAZero(int timeUnit) {
-  if (timeUnit < 10) {
+  if (timeUnit < 10  && !(timeUnit < 0)) {
     return "0" + String(timeUnit);
   }
 
   return String(timeUnit);
+}
+
+int handleDiffHours(int currentHours) {
+  int x = currentHours + diffHours;
+
+  if (diffHours > 0) {
+    if (x > 23) {
+      return x - 24;
+    }
+  } else {
+    if (x < 0) {
+      return x + 24;
+    }
+  }
+
+  return x;
 }
 
 void displayTime(String time) {
@@ -185,7 +201,7 @@ void displayTime(String time) {
   if (configMode) {
     display.setCursor(0, 0);
     display.setTextColor(WHITE);
-    display.setTextSize(1);  
+    display.setTextSize(1);
     display.print(currentlySetting());
   }
 
@@ -199,7 +215,7 @@ void displayTime(String time) {
     display.setRotation(0);
     display.setCursor(4, 15);
   }
-  
+
   display.setTextColor(WHITE);
   display.setTextSize(4);
   display.print(time);
@@ -215,7 +231,7 @@ String currentlySetting() {
     case 1:
       return "MINUTES";
     case 2:
-      return "HOURS AHEAD";
+      return "HOURS DIFFERENCE";
   }
 }
 
@@ -257,7 +273,7 @@ void handleSet() {
 void handleUp() {
   int hrs = rtc.getHours();
   int mins = rtc.getMinutes();
-  
+
   switch (currentConfig) {
     case 0:
       if (hrs == 23) hrs = 0;
@@ -270,7 +286,7 @@ void handleUp() {
       rtc.setMinutes(mins);
       break;
     case 2:
-      if (diffHours == 23) diffHours = 0;
+      if (diffHours == 23) diffHours = -23;
       if (diffHours < 23) diffHours++;
       break;
   }
@@ -279,7 +295,7 @@ void handleUp() {
 void handleDown() {
   int hrs = rtc.getHours();
   int mins = rtc.getMinutes();
-   
+
   switch (currentConfig) {
     case 0:
       if (hrs == 0) hrs = 23;
@@ -292,8 +308,8 @@ void handleDown() {
       rtc.setMinutes(mins);
       break;
     case 2:
-      if (diffHours == 0) diffHours = 23;
-      if (diffHours > 0) diffHours--;
+      if (diffHours == -23) diffHours = 23;
+      if (diffHours <= 23) diffHours--;
       break;
   }
 }
