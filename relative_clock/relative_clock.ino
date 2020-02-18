@@ -12,13 +12,6 @@
    Noah Kernis
 */
 
-// NOTE: REFS:
-// - https://github.com/mathertel/OneButton/blob/master/examples/SimpleOneButton/SimpleOneButton.ino
-// - https://startingelectronics.org/tutorials/arduino/modules/OLED-128x64-I2C-display/
-// - https://learn.adafruit.com/adafruit-gfx-graphics-library/graphics-primitives
-// - https://github.com/arduino-libraries/Arduino_LSM6DS3
-// - https://github.com/PaulStoffregen/Time
-
 // display
 #include <SPI.h>
 #include <Wire.h>
@@ -63,7 +56,7 @@ int currentConfig = 0;
 
 // relative time diff
 // default is 12 hours 0 minutes ahead
-int diffHours = 12;
+int diffHours = 0;
 
 // NOTE: -----> Setup <-----
 
