@@ -31,9 +31,12 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 float x, y, z;
 
 // time
-#include <RTCZero.h>
+// #include <RTCZero.h>
+#include <RTClib.h>
 
-RTCZero rtc;
+// RTCZero rtc;
+RTC_PCF8523 rtc;
+
 int lastSecond = 0; // rtc.getSeconds()' previous value
 
 // buttons
@@ -60,249 +63,350 @@ int diffHours = 0;
 
 // NOTE: -----> Setup <-----
 
-void setup() {
-  Serial.begin(9600);
+void setup()
+{
+	Serial.begin(9600);
+	Serial.println("START");
 
-  // init display
-  // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
-    Serial.println(F("SSD1306 allocation failed"));
-    for (;;); // Don't proceed, loop forever
-  }
+	// init display
+	// SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
+	if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
+	{ // Address 0x3D for 128x64
+		Serial.println(F("SSD1306 allocation failed"));
+		while (1);
+	}
 
-  // init IMU
-  if (!IMU.begin()) {
-    Serial.println("Failed to initialize IMU!");
+	// init IMU
+	if (!IMU.begin())
+	{
+		Serial.println("Failed to initialize IMU!");
+		while (1);
+	}
 
-    while (1);
-  }
+	// init RTC
+	// rtc.begin();
+	if (! rtc.begin())
+	{
+		Serial.println("Couldn't find RTC");
+		while (1);
+	}
 
-  // init RTC
-  rtc.begin();
-  rtc.setTime(0, 0, 0);
+	if (! rtc.initialized())
+	{
+		Serial.println("RTC is NOT running!");
+		while (1);
+	}
 
-  // set button
-  pinMode(setBtnPin, INPUT_PULLUP);
-  setBtn.attachClick(setPressed);
-  setBtn.attachDoubleClick(setDoublePressed);
-  setBtn.setDebounceTicks(80);
+	// rtc.setTime(0, 0, 0);
+	rtc.adjust(DateTime(1992, 1, 11, 0, 0, 0));
 
-  // up button
-  pinMode(upBtnPin, INPUT_PULLUP);
-  upBtn.attachClick(upPressed);
+	// set button
+	pinMode(setBtnPin, INPUT_PULLUP);
+	setBtn.attachClick(setPressed);
+	setBtn.attachDoubleClick(setDoublePressed);
+	setBtn.setDebounceTicks(80);
 
-  // down button
-  pinMode(downBtnPin, INPUT_PULLUP);
-  downBtn.attachClick(downPressed);
+	// up button
+	pinMode(upBtnPin, INPUT_PULLUP);
+	upBtn.attachClick(upPressed);
+
+	// down button
+	pinMode(downBtnPin, INPUT_PULLUP);
+	downBtn.attachClick(downPressed);
 }
 
 // NOTE: -----> Loop <-----
 
-void loop() {
-  // keep watching the push button
-  setBtn.tick();
-  upBtn.tick();
-  downBtn.tick();
+void loop()
+{
+	// keep watching the push button
+	setBtn.tick();
+	upBtn.tick();
+	downBtn.tick();
 
-  // check time has elapsed
-  if (rtc.getSeconds() != lastSecond) {
-    timeAction(0);
+	// check time has elapsed
+	DateTime now = rtc.now();
+	// if (rtc.getSeconds() != lastSecond)
+	if (now.second() != lastSecond)
+	{
+		timeAction(0);
 
-    lastSecond = rtc.getSeconds();
-  }
+		// lastSecond = rtc.getSeconds();
+		lastSecond = now.second();
+	}
 
-  if (IMU.accelerationAvailable()) {
-    IMU.readAcceleration(x, y, z);
+	if (IMU.accelerationAvailable())
+	{
+		IMU.readAcceleration(x, y, z);
 
-    isUpsideDown(x);
-  }
+		isUpsideDown(x);
+	}
+
+	Serial.println(now.timestamp());
 }
 
 // NOTE: -----> Upside Down <-----
 
-void isUpsideDown(int xPostion) {
-  if (upsideDown) {
-    if (xPostion > 0) upsideDown = !upsideDown;
-  } else {
-    if (xPostion < 0) upsideDown = !upsideDown;
-  }
+void isUpsideDown(int xPostion)
+{
+	if (upsideDown)
+	{
+		if (xPostion > 0)
+			upsideDown = !upsideDown;
+	}
+	else
+	{
+		if (xPostion < 0)
+			upsideDown = !upsideDown;
+	}
 }
 
 // NOTE: -----> Action Handler <-----
 
-void setDoublePressed() {
-  if (!upsideDown) timeAction(1);
+void setDoublePressed()
+{
+	if (!upsideDown)
+		timeAction(1);
 }
 
-void setPressed() {
-  if (configMode == true && !upsideDown) timeAction(2);
+void setPressed()
+{
+	if (configMode == true && !upsideDown)
+		timeAction(2);
 }
 
-void upPressed() {
-  if (configMode == true && !upsideDown) timeAction(3);
+void upPressed()
+{
+	if (configMode == true && !upsideDown)
+		timeAction(3);
 }
 
-void downPressed() {
-  if (configMode == true && !upsideDown) timeAction(4);
+void downPressed()
+{
+	if (configMode == true && !upsideDown)
+		timeAction(4);
 }
 
 // NOTE: -----> Timestamp <-----
 
-String createTimeStamp() {
-  int currentHours = rtc.getHours();
-  String currentMinutes = needsAZero(rtc.getMinutes());
+String createTimeStamp()
+{
+	DateTime now = rtc.now();
+	// int currentHours = rtc.getHours();
+	// String currentMinutes = needsAZero(rtc.getMinutes());
+	int currentHours = now.hour();
+	String currentMinutes = needsAZero(now.minute());
 
-  if (upsideDown) {
-    return needsAZero(handleDiffHours(currentHours)) + ':' + currentMinutes;
-  }
-  return needsAZero(currentHours) + ':' + currentMinutes;
+	if (upsideDown)
+	{
+		return needsAZero(handleDiffHours(currentHours)) + ':' + currentMinutes;
+	}
+	return needsAZero(currentHours) + ':' + currentMinutes;
 }
 
-String needsAZero(int timeUnit) {
-  if (timeUnit < 10  && !(timeUnit < 0)) {
-    return "0" + String(timeUnit);
-  }
+String needsAZero(int timeUnit)
+{
+	if (timeUnit < 10 && !(timeUnit < 0))
+	{
+		return "0" + String(timeUnit);
+	}
 
-  return String(timeUnit);
+	return String(timeUnit);
 }
 
-int handleDiffHours(int currentHours) {
-  int x = currentHours + diffHours;
+int handleDiffHours(int currentHours)
+{
+	int x = currentHours + diffHours;
 
-  if (diffHours > 0) {
-    if (x > 23) {
-      return x - 24;
-    }
-  } else {
-    if (x < 0) {
-      return x + 24;
-    }
-  }
+	if (diffHours > 0)
+	{
+		if (x > 23)
+		{
+			return x - 24;
+		}
+	}
+	else
+	{
+		if (x < 0)
+		{
+			return x + 24;
+		}
+	}
 
-  return x;
+	return x;
 }
 
-void displayTime(String time) {
-  display.clearDisplay();
+void displayTime(String time)
+{
+	display.clearDisplay();
 
-  if (upsideDown && !configMode) {
-    display.setRotation(2);
-  } else {
-    display.setRotation(0);
-  }
+	if (upsideDown && !configMode)
+	{
+		display.setRotation(2);
+	}
+	else
+	{
+		display.setRotation(0);
+	}
 
-  if (configMode) {
-    display.setCursor(0, 0);
-    display.setTextColor(WHITE);
-    display.setTextSize(1);
-    display.print(currentlySetting());
-  }
+	if (configMode)
+	{
+		display.setCursor(0, 0);
+		display.setTextColor(WHITE);
+		display.setTextSize(1);
+		display.print(currentlySetting());
+	}
 
-  if (upsideDown && !configMode) {
-    display.setRotation(2);
-    display.setCursor(4, 20);
-  } else if (currentConfig == 2 && configMode) {
-    display.setRotation(0);
-    display.setCursor(40, 15);
-  } else {
-    display.setRotation(0);
-    display.setCursor(4, 15);
-  }
+	if (upsideDown && !configMode)
+	{
+		display.setRotation(2);
+		display.setCursor(4, 20);
+	}
+	else if (currentConfig == 2 && configMode)
+	{
+		display.setRotation(0);
+		display.setCursor(40, 15);
+	}
+	else
+	{
+		display.setRotation(0);
+		display.setCursor(4, 15);
+	}
 
-  display.setTextColor(WHITE);
-  display.setTextSize(4);
-  display.print(time);
-  display.display();
+	display.setTextColor(WHITE);
+	display.setTextSize(4);
+	display.print(time);
+	display.display();
 }
 
 //  NOTE: -----> Clock Config <-----
 
-String currentlySetting() {
-  switch (currentConfig) {
-    case 0:
-      return "HOURS";
-    case 1:
-      return "MINUTES";
-    case 2:
-      return "DIFFERENCE";
-  }
+String currentlySetting()
+{
+	switch (currentConfig)
+	{
+	case 0:
+		return "HOURS";
+	case 1:
+		return "MINUTES";
+	case 2:
+		return "DIFFERENCE";
+	}
 }
 
-void timeAction(int action) {
-  switch (action) {
-    case 0: // TIME
-      break;
-    case 1:
-      if (configMode) currentConfig = 0;
-      configMode = !configMode;
-      break;
-    case 2:
-      handleSet();
-      break;
-    case 3:
-      handleUp();
-      break;
-    case 4:
-      handleDown();
-      break;
-  }
+void timeAction(int action)
+{
+	switch (action)
+	{
+	case 0: // TIME
+		break;
+	case 1:
+		if (configMode)
+			currentConfig = 0;
+		configMode = !configMode;
+		break;
+	case 2:
+		handleSet();
+		break;
+	case 3:
+		handleUp();
+		break;
+	case 4:
+		handleDown();
+		break;
+	}
 
-  if (currentConfig == 0 || currentConfig == 1) {
-    displayTime(createTimeStamp());
-  } else {
-    displayTime(String(needsAZero(diffHours)));
-  }
+	if (currentConfig == 0 || currentConfig == 1)
+	{
+		displayTime(createTimeStamp());
+	}
+	else
+	{
+		displayTime(String(needsAZero(diffHours)));
+	}
 }
 
-void handleSet() {
-  if (currentConfig == 2) {
-    currentConfig = 0;
-    configMode = false;
-  } else {
-    currentConfig++;
-  }
+void handleSet()
+{
+	if (currentConfig == 2)
+	{
+		currentConfig = 0;
+		configMode = false;
+	}
+	else
+	{
+		currentConfig++;
+	}
 }
 
-void handleUp() {
-  int hrs = rtc.getHours();
-  int mins = rtc.getMinutes();
+void handleUp()
+{
+	DateTime now = rtc.now();
 
-  switch (currentConfig) {
-    case 0:
-      if (hrs == 23) hrs = 0;
-      if (hrs < 23) hrs++;
-      rtc.setHours(hrs);
-      break;
-    case 1:
-      if (mins == 59) mins = 0;
-      if (mins < 59) mins++;
-      rtc.setMinutes(mins);
-      break;
-    case 2:
-      if (diffHours == 23) diffHours = -23;
-      if (diffHours < 23) diffHours++;
-      break;
-  }
+	// int hrs = rtc.getHours();
+	// int mins = rtc.getMinutes();
+	int hrs = now.hour();
+	int mins = now.minute();
+
+	switch (currentConfig)
+	{
+	case 0:
+		if (hrs == 23)
+			hrs = 0;
+		if (hrs < 23)
+			hrs++;
+		// rtc.setHours(hrs);
+		rtc.adjust(DateTime(1992, 1, 11, hrs, mins, 0));
+		break;
+	case 1:
+		if (mins == 59)
+			mins = 0;
+		if (mins < 59)
+			mins++;
+		// rtc.setMinutes(mins);
+		rtc.adjust(DateTime(1992, 1, 11, hrs, mins, 0));
+		break;
+	case 2:
+		if (diffHours == 23)
+			diffHours = -23;
+		if (diffHours < 23)
+			diffHours++;
+		break;
+	}
 }
 
-void handleDown() {
-  int hrs = rtc.getHours();
-  int mins = rtc.getMinutes();
+void handleDown()
+{
+	DateTime now = rtc.now();
 
-  switch (currentConfig) {
-    case 0:
-      if (hrs == 0) hrs = 23;
-      if (hrs > 0) hrs--;
-      rtc.setHours(hrs);
-      break;
-    case 1:
-      if (mins == 0) mins = 59;
-      if (mins > 0) mins--;
-      rtc.setMinutes(mins);
-      break;
-    case 2:
-      if (diffHours == -23) diffHours = 23;
-      if (diffHours <= 23) diffHours--;
-      break;
-  }
+	// int hrs = rtc.getHours();
+	// int mins = rtc.getMinutes();
+	int hrs = now.hour();
+	int mins = now.minute();
+
+	switch (currentConfig)
+	{
+	case 0:
+		if (hrs == 0)
+			hrs = 23;
+		if (hrs > 0)
+			hrs--;
+		// rtc.setHours(hrs);
+		rtc.adjust(DateTime(1992, 1, 11, hrs, mins, 0));
+		break;
+	case 1:
+		if (mins == 0)
+			mins = 59;
+		if (mins > 0)
+			mins--;
+		// rtc.setMinutes(mins);
+		rtc.adjust(DateTime(1992, 1, 11, hrs, mins, 0));
+		break;
+	case 2:
+		if (diffHours == -23)
+			diffHours = 23;
+		if (diffHours <= 23)
+			diffHours--;
+		break;
+	}
 }
